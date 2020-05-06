@@ -715,6 +715,25 @@ python /home/mmabry/software/pcangsd-0.97/pcangsd.py -beagle B_oleracea_allC_noC
 ```bash
 sed -r 's/C([1-9])/\1/g' Bo_noScaff_ID_FiltMiss.vcf.recode.vcf > Bo_noScaff_ID_FiltMiss.noC.vcf
 ```
+#### B. Shell Script for SNPhylo [http://chibba.pgml.uga.edu/snphylo/]
+```bash
+#! /bin/bash
+
+#SBATCH -p BioCompute,hpc5,Lewis  # partition
+#SBATCH -J SNPhylo  # give the job a custom name
+#SBATCH -o SNPhylo-%j.out  # give the job output a custom name
+#SBATCH -t 2-00:00:00  # two day time limit
+
+#SBATCH -N 1  # number of nodes
+#SBATCH -n 14  # number of cores (AKA tasks)
+#SBATCH --mem=80G #memory
+
+module load snphylo/snphylo-2016-02-04-python-2.7.14-tk
+
+
+snphylo.sh -v Bo_noScaff_ID_FiltMiss_LD50prunded.snps.no188.noC.rename.vcf -a 9 -l 0.1 -m 0.01 -M 0.4 -b -B 1000 -o 238_S17
+```
+
 
 
 ## 10. FastSTRUCTURE
