@@ -736,10 +736,267 @@ snphylo.sh -v Bo_noScaff_ID_FiltMiss_LD50prunded.snps.no188.noC.rename.vcf -a 9 
 ```
 
 ## 10. FastSTRUCTURE [https://rajanil.github.io/fastStructure/]
+#### A. Shell script : FastStucture.sh
+```bash
+#! /bin/bash
+
+#SBATCH -p BioCompute,hpc5,Lewis  # partition
+#SBATCH --account=biosci
+#SBATCH -J FastStucture  # give the job a custom name
+#SBATCH -o results-%j.out  # give the job output a custom name
+#SBATCH -t 2-00:00:00  # two day time limit
+
+#SBATCH -N 1  # number of nodes
+#SBATCH -n 14  # number of cores (AKA tasks)
+#SBATCH --mem=80000 #memory
+
+module load miniconda3/miniconda3-4.3.30 
+source activate fastStructure-condaenv
+
+python /storage/hpc/data/mmabry/src/fastStructure/structure.py -K 4 --input=plink --output=wild_domest --full --seed=100
+```
+#### B. Choose K Shell script : ChooseK.sh
+```bash
+#! /bin/bash
+
+#SBATCH -p BioCompute,hpc5,Lewis  # partition
+#SBATCH --account=biosci
+#SBATCH -J chooseK  # give the job a custom name
+#SBATCH -o results-%j.out  # give the job output a custom name
+#SBATCH -t 2-00:00:00  # two day time limit
+
+#SBATCH -N 1  # number of nodes
+#SBATCH -n 14  # number of cores (AKA tasks)
+#SBATCH --mem=80000 #memory
+
+module load miniconda3/miniconda3-4.3.30 
+source activate fastStructure-condaenv
+
+python /storage/hpc/data/mmabry/src/fastStructure/chooseK.py --input=wild_domest
+```
 
 ## 11. IQ-tree POMO [http://www.iqtree.org/doc/Polymorphism-Aware-Models]
+#### A. Use only the pure samples (as determined using FastStructure) in a vcf
+```bash
+module load vcftools/vcftools-0.1.17
+
+vcftools --recode --vcf Bo_noScaff_ID_FiltMiss_LD50prunded.snps.vcf --keep KeepPureSample_all.txt --out Bo_noScaff_ID_FiltMiss_LD50prunded.snps.vcf
+```
+#### B. Get file format correct
+```bash
+#! /bin/bash
+
+#SBATCH -J PDGSpider
+#SBATCH -o PDGSpider.o%J
+#SBATCH -e PDGSpider.e%J
+#SBATCH --partition CLUSTER
+#SBATCH --ntasks 1
+#SBATCH --nodes 1
+#SBATCH --cpus-per-task 1
+#SBATCH --mem 20G
+
+java -Xmx2000m -Xms512m -jar /home/mem2c2/PGDSpider_2.1.1.5/PGDSpider2-cli.jar -inputfile Bo_noScaff_ID_FiltMiss_LD50prunded.snps.vcf -inputformat VCF -outputfile Bo_noScaff_ID_FiltMiss.vcf.recode.fasta -outputformat FASTA 
+```
+###### example template
+```bash
+# spid-file generated: Wed May 29 21:15:03 CDT 2019
+
+# VCF Parser questions
+PARSER_FORMAT=VCF
+
+# Only output SNPs with a phred-scaled quality of at least:
+VCF_PARSER_QUAL_QUESTION=
+# Select population definition file:
+VCF_PARSER_POP_FILE_QUESTION=
+# What is the ploidy of the data?
+VCF_PARSER_PLOIDY_QUESTION=
+# Do you want to include a file with population definitions?
+VCF_PARSER_POP_QUESTION=
+# Output genotypes as missing if the phred-scale genotype quality is below:
+VCF_PARSER_GTQUAL_QUESTION=
+# Do you want to include non-polymorphic SNPs?
+VCF_PARSER_MONOMORPHIC_QUESTION=TRUE
+# Only output following individuals (ind1, ind2, ind4, ...):
+VCF_PARSER_IND_QUESTION=
+# Only input following regions (refSeqName:start:end, multiple regions: whitespace separated):
+VCF_PARSER_REGION_QUESTION=
+# Output genotypes as missing if the read depth of a position for the sample is below:
+VCF_PARSER_READ_QUESTION=
+# Take most likely genotype if "PL" or "GL" is given in the genotype field?
+VCF_PARSER_PL_QUESTION=
+# Do you want to exclude loci with only missing data?
+VCF_PARSER_EXC_MISSING_LOCI_QUESTION=
+
+# FASTA Writer questions
+WRITER_FORMAT=FASTA
+
+# Numeric SNP data: enter the integer that codes for nucleotide A:
+FASTA_WRITER_CODE_A_QUESTION=
+# Specify the locus you want to write to the FASTA file:
+FASTA_WRITER_LOCUS_COMBINATION_QUESTION=
+# Numeric SNP data: enter the integer that codes for nucleotide G:
+FASTA_WRITER_CODE_G_QUESTION=
+# Numeric SNP data: enter the integer that codes for nucleotide C:
+FASTA_WRITER_CODE_C_QUESTION=
+# Do you want to save sequences on a single line?
+FASTA_SINGLE_LINE_QUESTION=TRUE
+# Numeric SNP data: enter the integer that codes for nucleotide T:
+FASTA_WRITER_CODE_T_QUESTION=
+# Specify the DNA locus you want to write to the FASTA file, write "CONCAT" for concatenation or "SEPARATE" to separate the loci:
+FASTA_WRITER_CONCATENATE_QUESTION=
+# Specify which data type should be included in the FASTA file  (FASTA can only analyze one data type per file):
+FASTA_WRITER_DATA_TYPE_QUESTION=SNP
+# Do you want to save haploid sequences (consensus sequence with ambiguity codes is taken if ploidy is higher)?
+FASTA_WRITER_HAPLOID_QUESTION=TRUE
+```
+#### C. Rename population header to match the format below
+```bash
+>costata-33_S2_ | population:costata
+```
+#### D. Remove and remaining ? and replace with N
+```bash
+sed 's/?/N/g' Bo_noScaff_ID_FiltMiss_LD50prunded.snps.fasta > Bo_noScaff_ID_FiltMiss_LD50prunded.snps2.fasta 
+```
+#### E. Run Fasta to Counts script
+```bash
+#! /bin/bash
+
+#SBATCH -J Fasta2counts
+#SBATCH -o Fasta2counts.o%J
+#SBATCH -e Fasta2counts.e%J
+#SBATCH --partition CLUSTER
+#SBATCH --ntasks 1
+#SBATCH --nodes 1
+#SBATCH --cpus-per-task 1
+#SBATCH --mem 20G
+
+module load Python/Python-3.6.4 
+
+/home/mem2c2/cflib/scripts/FastaToCounts.py Bo_noScaff_ID_FiltMiss.recode.fasta.gz Bo_noScaff_ID_FiltMiss.recode.cf.gz
+```
+#### F. Run POMO
+```bash
+#! /bin/bash
+
+#SBATCH -J POMO_BS
+#SBATCH -o POMO_BS.o%J
+#SBATCH -e POMO_BS.e%J
+#SBATCH --partition CLUSTER
+#SBATCH --ntasks 1
+#SBATCH --nodes 1
+#SBATCH --cpus-per-task 14
+#SBATCH --mem 40G
+#SBATCH --time 2-00:00:00
+
+module load iqtree/iqtree-1.6.10
+
+iqtree -s Bo_noScaff_ID_FiltMiss_LD50prunded.snps2.cf -m GTR+P -bb 1000 -o rupestris -pre BOOT
+```
 
 ## 12. TreeMix [https://speciationgenomics.github.io/Treemix/]
+#### A. First make .clust file by hand using a text editing program such as BBedit  (from .fam file), see example below
+```bash
+58_S3_ 58_S3_ sabellica
+59_S4_ 59_S4_ sabellica
+5_S5_ 5_S5_ palmifolia
+```
+#### B. Then use the plink2treemix.py script from the authors of treemix to prepare plink data for treemix
+```bash
+#! /bin/bash
+
+#SBATCH -p BioCompute  # partition
+#SBATCH -J plink2treemix  # give the job a custom name
+#SBATCH -o results-%j.out  # give the job output a custom name
+#SBATCH -t 2-00:00:00  # two day time limit
+
+#SBATCH -N 1  # number of nodes
+#SBATCH -n 14  # number of cores (AKA tasks)
+#SBATCH --mem=80000 #memory 
+
+##make sure plink2treemix.py is in the same directory as when you are running this
+
+python plink2treemix.py plink.frq.strat.gz treemix.frq.gz
+```
+#### C. Run treemix
+```bash
+#! /bin/bash
+
+#SBATCH -p BioCompute  # partition
+#SBATCH -J treemix  # give the job a custom name
+#SBATCH -o results-%j.out  # give the job output a custom name
+#SBATCH -t 2-00:00:00  # two day time limit
+
+#SBATCH -N 1  # number of nodes
+#SBATCH -n 14  # number of cores (AKA tasks)
+#SBATCH --mem=80000 #memory 
+
+
+for i in {2..9}
+
+do
+    /home/mem2c2/treemix/src/treemix -i treemix.frq.gz -root montana -k 300 -m $i -o Bo_300_${i}_Montana
+
+done
+```
+#### D. Plot results in R
+```R
+source("/Users/mem2c2/OneDrive - University of Missouri/Computer/Projects/BoleraceaPopGen/TreeMix/plotting_funcs.R")
+library(ggplot2)
+
+#read in file
+setwd("/Users/mem2c2/OneDrive - University of Missouri/Computer/Projects/BoleraceaPopGen/TreeMix/70pure/")
+
+pdf("70PureSamples_IndWild.pdf", width = 25, height = 40)
+par(mfrow=c(3,3))
+
+m.2 = plot_tree("Bo_treemix_70Pure_2_indivWild", cex = 1)
+m.3 = plot_tree("Bo_treemix_70Pure_3_indivWild", cex = 1)
+m.4 = plot_tree("Bo_treemix_70Pure_4_indivWild", cex = 1)
+m.5 = plot_tree("Bo_treemix_70Pure_5_indivWild", cex = 1)
+m.6 = plot_tree("Bo_treemix_70Pure_6_indivWild", cex = 1)
+m.7 = plot_tree("Bo_treemix_70Pure_7_indivWild", cex = 1)
+m.8 = plot_tree("Bo_treemix_70Pure_8_indivWild", cex = 1)
+m.9 = plot_tree("Bo_treemix_70Pure_9_indivWild", cex = 1)
+
+dev.off()
+
+pdf("PlotResid.pdf", width = 8, height = 8)
+par(mar=c(5,5,1,1)+0.1)
+r.2 = plot_resid("Bo_treemix_70Pure_2_indivWild", pop_order = "popList.txt")
+r.3 = plot_resid("Bo_treemix_70Pure_3_indivWild", pop_order = "popList.txt")
+r.4 = plot_resid("Bo_treemix_70Pure_4_indivWild", pop_order = "popList.txt")
+r.5 = plot_resid("Bo_treemix_70Pure_5_indivWild", pop_order = "popList.txt", cex = 0.8)
+r.6 = plot_resid("Bo_treemix_70Pure_6_indivWild", pop_order = "popList.txt")
+r.7 = plot_resid("Bo_treemix_70Pure_7_indivWild", pop_order = "popList.txt")
+r.8 = plot_resid("Bo_treemix_70Pure_8_indivWild", pop_order = "popList.txt")
+r.9 = plot_resid("Bo_treemix_70Pure_9_indivWild", pop_order = "popList.txt")
+
+dev.off()
+
+##check how much varience is explaned 
+var_2 <- get_f("Bo_treemix_70Pure_2_indivWild")
+var_3 <- get_f("Bo_treemix_70Pure_3_indivWild")
+var_4 <- get_f("Bo_treemix_70Pure_4_indivWild")
+var_5 <- get_f("Bo_treemix_70Pure_5_indivWild")
+var_6 <- get_f("Bo_treemix_70Pure_6_indivWild")
+var_7 <- get_f("Bo_treemix_70Pure_7_indivWild")
+var_8 <- get_f("Bo_treemix_70Pure_8_indivWild")
+var_9 <- get_f("Bo_treemix_70Pure_9_indivWild")
+
+
+VarienceExplained <- c(var_2, var_3, var_4, var_5, var_6, var_7, var_8, var_9)
+MigrationEdges <- c("2", "3", "4", "5", "6", "7", "8", "9")
+
+varTable <- data.frame(MigrationEdges, VarienceExplained)
+
+ggplot(varTable, aes(x= MigrationEdges, y = VarienceExplained)) +
+  theme(text = element_text(size = 30)) +
+  geom_text(aes(label = migrationEdges, size = 30)) +
+  theme(axis.title.x=element_text(size = 15), axis.text.x=element_blank()) +
+  theme(axis.title.y=element_text(size = 15), axis.text.y=element_text(size = 15)) +
+  ylim(0.9,1) +
+  theme(legend.position = "none")
+```
 
 ## 13. F-statistics
 
