@@ -619,7 +619,7 @@ plink --bfile plink --extract plink.prune.in --make-bed --out pruned50 --allow-e
 plink --bfile pruned50 --recode vcf-fid --out GVCF_selectVar_noScaff_FiltMiss_depth_snps_no188_LD40kb.vcf --allow-extra-chr
 ```
 
-## 8. PCAngsd
+## 8. PCAngsd [http://www.popgen.dk/software/index.php/PCAngsd#Quick_start]
 #### A. sort and index using samtools before running, use bam files from mapping to genome in step 1. Shell Script : SortIndex.sh
 ```bash
 #! /bin/bash
@@ -711,12 +711,12 @@ python /home/mmabry/software/pcangsd-0.97/pcangsd.py -beagle B_oleracea_allC_noC
 ```
 
 
-## 9. SNPhylo
+## 9. SNPhylo [http://chibba.pgml.uga.edu/snphylo/]
 #### A. Remove C's in front of Chromosome number
 ```bash
 sed -r 's/C([1-9])/\1/g' Bo_noScaff_ID_FiltMiss.vcf.recode.vcf > Bo_noScaff_ID_FiltMiss.noC.vcf
 ```
-#### B. Shell Script for SNPhylo [http://chibba.pgml.uga.edu/snphylo/]
+#### B. Shell Script for SNPhylo 
 ```bash
 #! /bin/bash
 
@@ -735,21 +735,19 @@ module load snphylo/snphylo-2016-02-04-python-2.7.14-tk
 snphylo.sh -v Bo_noScaff_ID_FiltMiss_LD50prunded.snps.no188.noC.rename.vcf -a 9 -l 0.1 -m 0.01 -M 0.4 -b -B 1000 -o 238_S17
 ```
 
+## 10. FastSTRUCTURE [https://rajanil.github.io/fastStructure/]
 
+## 11. IQ-tree POMO [http://www.iqtree.org/doc/Polymorphism-Aware-Models]
 
-## 10. FastSTRUCTURE
-
-## 11. IQ-tree POMO 
-
-## 12. TreeMix
+## 12. TreeMix [https://speciationgenomics.github.io/Treemix/]
 
 ## 13. F-statistics
 
-## 14. Salmon
+## 14. Salmon [https://combine-lab.github.io/salmon/getting_started/]
 
 ## 15. tximport and DEseq2
 
-## 16. WGCNA
+## 16. WGCNA [https://horvath.genetics.ucla.edu/html/CoexpressionNetwork/Rpackages/WGCNA/Tutorials/]
 
 
 
