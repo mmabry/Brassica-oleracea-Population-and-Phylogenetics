@@ -1,4 +1,4 @@
-# Population-and-Phylogenetics-analysis-of-Brassica-oleracea
+# Brassica-oleracea-Population-and-Phylogenetics
 Analyses run for Mabry et al. (in prep) The Evolutionary History of Wild and Domesticated Brassica oleracea (Brassicaceae)
 
 ## 1. MAPPING TO THE REFERENCE - STAR 2-PASS ALIGNMENT
