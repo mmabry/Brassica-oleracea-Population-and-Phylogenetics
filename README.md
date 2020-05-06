@@ -668,7 +668,7 @@ vcftools --recode --recode-INFO-all --vcf GVCF_selectVar_noScaff.vcf --max-missi
 grep -v '^#' Bo_noScaff_ID_FiltMiss.vcf.recode.vcf | wc -l
 ```
 
-## 7. PLINK CONVERSION and LD filtering 
+## 7. PLINK CONVERSION and LD filtering [https://www.cog-genomics.org/plink/]
 ```bash
 #! /bin/bash
 
@@ -783,7 +783,31 @@ module load py-numpy/py-numpy-1.14.2-openblas-python-2.7.14
 
 python /home/mmabry/software/pcangsd-0.97/pcangsd.py -beagle B_oleracea_allC_noCol_title_angsd.beagle.gz -e 23 -admix -selection 2 -inbreed 2 -o B_oleracea_PCangsd_Select_Admix -threads 14 -sites_save
 ```
+#### E. plot results in R
+```r
+library(ggplot2)
+library(viridis)
+library(RColorBrewer)
+install.packages("wesanderson")
+library(wesanderson)
 
+setwd("/Users/mem2c2/OneDrive - University of Missouri/Computer/Projects/BoleraceaPopGen/PCAngsd/withMAF/Domesticates/")
+
+pop<-read.csv("../Morphotypes.csv", header = FALSE)
+
+C <- as.matrix(read.table("B_oleracea1_9_PCangsd_maf.cov"))
+e <- eigen(C)
+
+evec <- data.frame(sample = 1:224, PC1 = e$vectors[,1], PC2 = e$vectors[,2],
+                   PC3 = e$vectors[,3], PC4 = e$vectors[,4], 
+                   pop = pop[,1], type = pop[,2], wild = pop[,4])
+
+ggplot(evec, aes(x=PC2, y=PC3, colour = factor(pop), shape = type))+
+  geom_point(size = 4, alpha = 0.7)+
+  xlab(paste("Principal Component 2\n", round(e$values[2],2), " % of genetic variance explained"))+
+  ylab(paste("Principal Component 3\n", round(e$values[3],2), " % of genetic variance explained"))+
+  ggtitle("Genetic Variation Between Wild and Cultivar Types PC2 vs PC3")
+```
 
 ## 9. SNPhylo [http://chibba.pgml.uga.edu/snphylo/]
 #### A. Remove C's in front of Chromosome number
@@ -1719,6 +1743,3 @@ ggplot(med.maps, aes(x = long, y = lat))+
   guides(size = 10)
 
 ```
-
-
-
