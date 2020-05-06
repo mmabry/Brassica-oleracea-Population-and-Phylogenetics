@@ -4,7 +4,7 @@ Analyses run for Mabry et al. (in prep) The Evolutionary History of Wild and Dom
 ## 1. MAPPING TO THE REFERENCE - STAR 2-PASS ALIGNMENT
 All of the following GATK scripts from https://gatkforums.broadinstitute.org/gatk/discussion/3891/calling-variants-in-rnaseq
 
-Reference : [ftp://ftp.ensemblgenomes.org/pub/plants/release-41/fasta/brassica_oleracea/dna/Brassica_oleracea.BOL.dna.toplevel.fa.gz]
+Reference:[ftp://ftp.ensemblgenomes.org/pub/plants/release-41/fasta/brassica_oleracea/dna/Brassica_oleracea.BOL.dna.toplevel.fa.gz]
 
 ```bash
 module load java/openjdk/java-1.8.0-openjdk
@@ -479,11 +479,85 @@ java -jar /share/apps/GATK/current/GenomeAnalysisTK.jar \
      -F CHROM -F POS -F ID -F QUAL -F AC -F QD -F FS \
      -o Bo_results2.table
 ```
-* to plot these use R 
 * to check SNP number
 ```bash
 grep -v "^#" GVCF_all_output.vcf | wc -l
 ```
+#### D. Plot in R
+```R
+library(ggplot2)
+library(dplyr)
+library(magrittr)
+library(tidyr)
+library(readr)
+library(purrr)
+library(tibble)
+library(forcats)
+library(readxl)
+library(stringr)
+library(cowplot)
+library(viridis)
+library(gridExtra)
+
+Bo_nofilt <- read_table2("/Users/mem2c2/Desktop/Bo_GVCF_all.table")
+glimpse(Bo_nofilt)
+
+#to plot QD with a intercept of filtering those with a score less than 2
+Bo_nofilt %>% 
+  filter(QD < 2.0) %>% 
+  tally()
+
+ggplot(Bo_nofilt, aes(x = QD)) +
+  geom_density() +
+  geom_vline(xintercept = 2.0)
+
+#to plot FS with a intercept of filtering those with a score less than 2
+Bo_nofilt %>% 
+  filter(FS > 30.0) %>% 
+  tally()
+
+ggplot(Bo_nofilt, aes(x = FS)) +
+  geom_density() +
+  geom_vline(xintercept = 30.0)
+
+####now look at the file after filtering
+Bo_filter <- read_table2("/Users/mem2c2/Desktop/Bo_GVCF_all_Filtered.table")
+glimpse(Bo_filter)
+
+#to plot QD with a intercept of filtering those with a score less than 2
+Bo_filter %>% 
+  filter(QD < 2.0) %>% 
+  tally()
+
+ggplot(Bo_filter, aes(x = QD)) +
+  geom_density() +
+  geom_vline(xintercept = 2.0)
+
+#to plot FS with a intercept of filtering those with a score less than 2
+Bo_filter %>% 
+  filter(FS > 30.0) %>% 
+  tally()
+
+ggplot(Bo_filter, aes(x = FS)) +
+  geom_density() +
+  geom_vline(xintercept = 30.0)
+
+#now to check how many varients are in scaffolds vs Chromosomes
+scaffTall <- Bo_filter %>% 
+  group_by(CHROM) %>% 
+  tally()
+
+scaffTall[10:7985, 2]
+sum(scaffTall[10:7985, 2])
+
+sum(scaffTall[1:9, 2])
+
+Bo_noScaff <- Bo_filter %>% 
+  select(CHROM, POS) %>%
+  filter(CHROM %in% c("C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9")) %>%
+  write_delim("/Users/mem2c2/Desktop/Bo_noScaff.txt", delim = "\t", col_names = FALSE)
+```
+
 
 ## 5. FILTERING VARIANTS (VCF)
 ```bash
@@ -998,9 +1072,64 @@ ggplot(varTable, aes(x= MigrationEdges, y = VarienceExplained)) +
   theme(legend.position = "none")
 ```
 
-## 13. F-statistics
+## 13. F-statistics [https://bitbucket.org/nygcresearch/treemix/wiki/Home]
+#### A. threepoptest as implemented in TreeMix
+```bash
+#! /bin/bash
+
+#SBATCH -p BioCompute  # partition
+#SBATCH -J threepop  # give the job a custom name
+#SBATCH -o results-%j.out  # give the job output a custom name
+#SBATCH -t 2-00:00:00  # two day time limit
+
+#SBATCH -N 1  # number of nodes
+#SBATCH -n 14  # number of cores (AKA tasks)
+#SBATCH --mem=80000 #memory 
+
+
+/home/mmabry/software/treemix/src/threepop -i treemix.frq.gz -k 500
+````
 
 ## 14. Salmon [https://combine-lab.github.io/salmon/getting_started/]
+Reference:[ftp://ftp.ensemblgenomes.org/pub/plants/release-43/fasta/brassica_oleracea/cdna/]
+
+#### A. Index transcriptome
+```bash
+#! /bin/bash
+
+#SBATCH -p BioCompute,hpc5,Lewis  # partition
+#SBATCH -J S_index  # give the job a custom name
+#SBATCH -o S_index-%j.out  # give the job output a custom name
+#SBATCH -t 2-00:00:00  # two day time limit
+
+#SBATCH -N 1  # number of nodes
+#SBATCH -n 14  # number of cores (AKA tasks)
+#SBATCH --mem=80G #memory
+
+/home/mmabry/software/salmon-latest_linux_x86_64/bin/salmon index -t Brassica_oleracea.BOL.cdna.all.fa.gz -i Brassica_oleracea.BOL_index
+```
+#### B. Run Salmon
+```bash
+#! /bin/bash
+
+#SBATCH -p BioCompute,hpc5,Lewis  # partition
+#SBATCH -J Salmon  # give the job a custom name
+#SBATCH -o Salmon-%j.out  # give the job output a custom name
+#SBATCH -t 2-00:00:00  # two day time limit
+
+#SBATCH -N 1  # number of nodes
+#SBATCH -n 14  # number of cores (AKA tasks)
+#SBATCH --mem=80G #memory
+
+
+PREFIX=$(echo $1 | awk -F_ '{print $1"_"$2"_"}')
+
+/home/mmabry/software/salmon-latest_linux_x86_64/bin/salmon quant -i /group/pireslab/mmabry_hpc/Brassica_oleracea/Salmon/Brassica_oleracea.BOL_index -l A -1 ${PREFIX}R1_001.fastq -2 ${PREFIX}R2_001.fastq -p 14 --validateMappings -o quants/${PREFIX}quant
+```
+##### B.1 To run them all use
+```bash
+for file in *_R1_001.fastq; do sbatch Salmon.sh $file; done
+```
 
 ## 15. tximport and DEseq2
 
