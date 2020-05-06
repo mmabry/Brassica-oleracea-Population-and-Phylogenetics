@@ -483,8 +483,253 @@ java -jar /share/apps/GATK/current/GenomeAnalysisTK.jar \
 ```bash
 grep -v "^#" GVCF_all_output.vcf | wc -l
 ```
-***** Before filtering I have 7,564,157 SNPS, round two = 7,564,168
 
+## 5. FILTERING VARIANTS (VCF)
+```bash
+#! /bin/bash
+
+#SBATCH -J FilterVCF
+#SBATCH -o FilterVCF.o%J
+#SBATCH -e FilterVCF.e%J
+#SBATCH --partition CLUSTER
+#SBATCH --ntasks 1
+#SBATCH --nodes 1
+#SBATCH --cpus-per-task 1
+#SBATCH --mem 20G
+
+module load java
+
+java -jar /share/apps/GATK/current/GenomeAnalysisTK.jar -T VariantFiltration -R /home/mem2c2/data/Brassica_oleracea.v2.1.fa -V /home/mem2c2/data/GVCF_all_output.vcf -window 35 -cluster 3 -filterName FS -filter "FS > 30.0" -filterName QD -filter "QD < 2.0" -o /home/mem2c2/data/FilteredGVCF_allBo.vcf
+```
+```bash
+! /bin/bash
+
+#SBATCH -J SelectVarients
+#SBATCH -o SelectVarients.o%J
+#SBATCH -e SelectVarients.e%J
+#SBATCH --partition CLUSTER
+#SBATCH --ntasks 1
+#SBATCH --nodes 1
+#SBATCH --cpus-per-task 1
+#SBATCH --mem 20G
+
+module load java
+
+ java -jar /share/apps/GATK/current/GenomeAnalysisTK.jar \
+   -R /home/mem2c2/data/Brassica_oleracea.v2.1.fa \
+   -T SelectVariants \
+   -V FilteredGVCF_allBo.vcf \
+   -o GVCF_selectVar.vcf \
+   -env \
+   -ef
+```
+
+## 6. REMOVE ALL SCAFFOLDS, ADD SNP ID, AND FILTER FOR MISSING DATA
+```bash
+module load samtools/samtools-1.8
+bgzip GVCF_selectVar.vcf
+tabix GVCF_selectVar.vcf.gz
+```
+```bash
+##then create regions file (Bo_noScaff.txt) 
+grep -v '^#' GVCF_selectVar.vcf | awk '{print $1"\t"$2}'
+#then delete scaffolds from the bottom
+```
+#### A. Remove Scaffolds
+```bash
+#! /bin/bash
+
+#SBATCH -J RemoveScaffs
+#SBATCH -o RemoveScaffs.o%J
+#SBATCH -e RemoveScaffs.e%J
+#SBATCH --partition CLUSTER
+#SBATCH --ntasks 1
+#SBATCH --nodes 1
+#SBATCH --cpus-per-task 1
+#SBATCH --mem 20G
+
+module load bcftools-1.8
+
+bcftools view GVCF_selectVar.vcf.gz -R Bo_noScaff.txt -o GVCF_selectVar_noScaff.vcf
+```
+#### B. Add ID
+```bash
+#! /bin/bash
+
+#SBATCH -J AddID
+#SBATCH -o AddID.o%J
+#SBATCH -e AddID.e%J
+#SBATCH --partition CLUSTER
+#SBATCH --ntasks 1
+#SBATCH --nodes 1
+#SBATCH --cpus-per-task 1
+#SBATCH --mem 20G
+
+module load bcftools-1.7 
+
+bcftools annotate --set-id +'%CHROM\_%POS\_%REF\_%FIRST_ALT' GVCF_selectVar_noScaff.vcf -o Bo_noScaff_ID_FiltMiss.vcf
+```
+
+#### C. Filter Missing, on depth, and indels
+```bash
+#! /bin/bash
+
+#SBATCH -p BioCompute,hpc5  # partition
+#SBATCH -J FilterVCF  # give the job a custom name
+#SBATCH -o results-%j.out  # give the job output a custom name
+#SBATCH -t 2-00:00:00  # two day time limit
+
+#SBATCH -N 1  # number of nodes
+#SBATCH -n 14  # number of cores (AKA tasks)
+#SBATCH --mem=80G #memory
+
+module load vcftools/vcftools-v0.1.14
+
+vcftools --recode --recode-INFO-all --vcf GVCF_selectVar_noScaff.vcf --max-missing 0.4 --min-meanDP 5 --remove-indels --remove-indv 188_S20_ --out GVCF_selectVar_noScaff_FiltMiss_depth_snps_no188.vcf
+```
+
+#### D. Check number of SNPs
+```bash
+grep -v '^#' Bo_noScaff_ID_FiltMiss.vcf.recode.vcf | wc -l
+```
+
+## 7. PLINK CONVERSION and LD filtering 
+```bash
+#! /bin/bash
+
+#SBATCH -p BioCompute,hpc5  # partition
+#SBATCH -J VCF_PLINK_LD  # give the job a custom name
+#SBATCH -o results-%j.out  # give the job output a custom name
+#SBATCH -t 2-00:00:00  # two day time limit
+
+#SBATCH -N 1  # number of nodes
+#SBATCH -n 14  # number of cores (AKA tasks)
+#SBATCH --mem=80G #memory
+
+
+module load plink/plink-1.90b 
+
+plink --vcf GVCF_selectVar_noScaff_FiltMiss_depth_snps_no188.vcf --make-bed --double-id --allow-extra-chr
+
+plink --bfile plink --indep 40kb 5 2 --allow-extra-chr
+
+plink --bfile plink --extract plink.prune.in --make-bed --out pruned50 --allow-extra-chr
+
+plink --bfile pruned50 --recode vcf-fid --out GVCF_selectVar_noScaff_FiltMiss_depth_snps_no188_LD40kb.vcf --allow-extra-chr
+```
+
+## 8. PCAngsd
+#### A. sort and index using samtools before running, use bam files from mapping to genome in step 1. Shell Script : SortIndex.sh
+```bash
+#! /bin/bash
+
+#SBATCH -p BioCompute,hpc5,Lewis  # partition
+#SBATCH -J Sort  # give the job a custom name
+#SBATCH -o Sort-%j.out  # give the job output a custom name
+#SBATCH -t 01:00:00  # two day time limit
+
+#SBATCH -N 1  # number of nodes
+#SBATCH -n 14  # number of cores (AKA tasks)
+#SBATCH --mem=80G #memory
+
+module load samtools/samtools-1.9 
+
+PREFIX=$(echo $1 | awk -F. '{print $1}')
+
+samtools sort ${PREFIX}.bam -o ${PREFIX}.sorted.bam
+
+samtools index ${PREFIX}.sorted.bam
+```
+##### A.1 to run them all in a loop
+```bash
+for file in *_split.bam; do sbatch SortIndex.sh $file; done
+```
+```bash
+git clone https://github.com/Rosemeis/pcangsd.git
+cd pcangsd/
+pip install --user -r python_packages.txt
+```
+#### B. Prepare input files using BAM and ANGSD
+```bash
+ls *sorted.bam > bam.filelist
+```
+#### C. Run Angsd
+```bash
+#! /bin/bash
+
+#SBATCH -p BioCompute  # partition
+#SBATCH -J Angsd  # give the job a custom name
+#SBATCH -o results-%j.out  # give the job output a custom name
+#SBATCH -t 2-00:00:00  # two day time limit
+
+#SBATCH -N 1  # number of nodes
+#SBATCH -n 54  # number of cores (AKA tasks)
+#SBATCH --mem=250G #memory
+
+module load htslib/htslib-1.9
+
+
+/home/mmabry/software/angsd-0.925/angsd -GL 1 -out B_oleracea.angsd -nThreads 14 -doGlf 2 -doMajorMinor 1 -doMaf 2 -minMapQ 30 -SNP_pval 1e-6 -bam bam.filelist
+
+#/home/mmabry/software/angsd-0.925/angsd -GL 1 -out B_oleracea_1_9.angsd -nThreads 14 -doGlf 2 -doMajorMinor 1 -doMaf 2 -minMapQ 30 -rf regions.txt -SNP_pval 1e-6 -bam bam.filelist # this will run the regions listed in the regions.txt file, for example only chromosomes 1-9
+
+#/home/mmabry/software/angsd-0.925/angsd -GL 1 -out B_oleracea.angsd -nThreads 14 -doGlf 2 -doMajorMinor 1 -doMaf 2 -SNP_pval 1e-6 -r C1: -bam bam.filelist   #just Chromosome 1
+```
+* #to run just chromosomes 1-9 make separate region list file and use -rf in command above
+```bash
+C1:
+C2:
+C3:
+C4:
+C5:
+C6:
+C7:
+C8:
+C9:
+```
+#### D. Run PCangsd
+```bash
+#! /bin/bash
+
+#SBATCH -p BioCompute,hpc5  # partition
+#SBATCH -J PCAngsd  # give the job a custom name
+#SBATCH -o results-%j.out  # give the job output a custom name
+#SBATCH -t 2-00:00:00  # two day time limit
+
+#SBATCH -N 1  # number of nodes
+#SBATCH -n 14  # number of cores (AKA tasks)
+#SBATCH --mem=80G #memory
+
+
+export PYTHONPATH=/home/mmabry/.local/lib/python2.7/site-packages/:$PYTHONPATH
+module load py-numpy/py-numpy-1.14.2-openblas-python-2.7.14
+
+#python /home/mmabry/software/pcangsd-0.97/pcangsd.py -beagle B_oleracea_allC_noCol_title_angsd.beagle.gz -admix -inbreed 2 -o B_oleracea_PCangsd -threads 14
+
+python /home/mmabry/software/pcangsd-0.97/pcangsd.py -beagle B_oleracea_allC_noCol_title_angsd.beagle.gz -e 23 -admix -selection 2 -inbreed 2 -o B_oleracea_PCangsd_Select_Admix -threads 14 -sites_save
+```
+
+
+## 9. SNPhylo
+#### A. Remove C's in front of Chromosome number
+```bash
+sed -r 's/C([1-9])/\1/g' Bo_noScaff_ID_FiltMiss.vcf.recode.vcf > Bo_noScaff_ID_FiltMiss.noC.vcf
+```
+
+
+## 10. FastSTRUCTURE
+
+## 11. IQ-tree POMO 
+
+## 12. TreeMix
+
+## 13. F-statistics
+
+## 14. Salmon
+
+## 15. tximport and DEseq2
+
+## 16. WGCNA
 
 
 
