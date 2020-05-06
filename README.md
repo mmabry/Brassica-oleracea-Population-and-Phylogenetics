@@ -2,7 +2,7 @@
 Analyses run for Mabry et al. (in prep) The Evolutionary History of Wild and Domesticated Brassica oleracea (Brassicaceae)
 
 ## 1. MAPPING TO THE REFERENCE - STAR 2-PASS ALIGNMENT
-
+All of the following GATK scripts from https://gatkforums.broadinstitute.org/gatk/discussion/3891/calling-variants-in-rnaseq
 Reference : [ftp://ftp.ensemblgenomes.org/pub/plants/release-41/fasta/brassica_oleracea/dna/Brassica_oleracea.BOL.dna.toplevel.fa.gz]
 
 ```bash
