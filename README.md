@@ -1131,9 +1131,594 @@ PREFIX=$(echo $1 | awk -F_ '{print $1"_"$2"_"}')
 for file in *_R1_001.fastq; do sbatch Salmon.sh $file; done
 ```
 
-## 15. tximport and DEseq2
+## 15. tximport and DEseq2 [http://bioconductor.org/packages/devel/bioc/vignettes/DESeq2/inst/doc/DESeq2.html]
+#### A. Run tximport and DEseq2 to get Rdata variable to plot in r
+```bash
+module load r/r-3.6.0-python-2.7.14-tk
+#run the path on command line or add to bashrc file
+export R_LIBS=~/Rlib/:${R_LIBS}
+srun --pty -p Interactive --mem 64G R
+```
+```R
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager") #only the first time
+install.packages("jsonlite") #only the first time
+install.packages("plyr", lib="~/Rlib/") #only the first time
+install.packages("ggplot2") #only the first time
+library(ggplot2)
+install.packages("Hmisc") #only the first time
+BiocManager::install("DESeq2") #only the first time
+library(DESeq2)
+BiocManager::install("tximport") #only the first time
+library(tximport)
+install.packages("RColorBrewer") #only the first time
+library(RColorBrewer)
+BiocManager::install("apeglm")
+library(apeglm)
+BiocManager::install("limma")
+library(limma)
+
+samples <- read.table("quants/phenotypes5.txt", header = TRUE)
+samples$plantout <- as.factor(samples$plantout)
+files <- file.path("/storage/htc/pireslab/Brassica_Expression/quants", samples$samples, "quant.sf")
+trans2gene <- read.csv("quants/trans2gene") #See tximport vignette for construction of this file
+txi <- tximport(files, type = "salmon", tx2gene = trans2gene)
+write.csv(txi$counts, "txi.csv") #use this if you just want a table of counts per sample
+dds <- DESeqDataSetFromTximport(txi, colData = samples, design = ~phenotype) #use design = ~plantout + phenotype for other dataset
+keep <- rowSums(counts(dds)) >= 5
+dds <- dds[keep,]
+colSums(counts(dds)) #this just checks how many reads per sample
+dds <- estimateSizeFactors(dds)  #I think this is correcting for library size, which is important for all Brassica dataset
+dds_vst <- vst(dds, blind = FALSE) #normalized with respect to library size or other normalization factors. vst transformation
+
+#or dds_rlog <- rlog(dds, blind = FALSE) #rlog transformation
+
+mat <- assay(dds_vst)
+mat <- limma::removeBatchEffect(mat, dds_vst$plantout)
+assay(dds_vst) <- mat
+rv <- rowVars(assay(dds_vst))
+select <- order(rv, decreasing=TRUE)[seq_len(min(1000, length(rv)))] # select the ntop genes by variance
+pca <- prcomp(t(assay(dds_vst)[select,]))
+saveRDS(pca, "pcaData1000_plantout1Domest.RDS")
+
+#also save top 1000 genes for WGCNA analysis
+top1000 <- (assay(dds_vst)[select,]) # new variable with top 1000 genes
+write.csv(top1000, "top1000_wild_domest.csv") #save to csv file
+```
+#### B. Plot PCA in R
+```r
+pca <- readRDS("/Users/mem2c2/OneDrive - University of Missouri/Computer/Projects/BoleraceaPopGen/Expression/pcaData1000_limma_plantout_phenotype.RDS")
+
+phenotypes <- read.table("/Users/mem2c2/OneDrive - University of Missouri/Computer/Projects/BoleraceaPopGen/Expression/phenotypes5.txt", header = TRUE)
+
+pca2 <- as.data.frame(pca$x)
+
+
+pca3 <- data.frame(sample = 1:224, PC1 = pca2[,1], PC2 = pca2[,2],
+                   PC3 = pca2[,3], PC4 = pca2[,4], 
+                   pop = phenotypes[,2], type = phenotypes[,5], wild = phenotypes[,3], 
+                   plantout = as.factor(phenotypes[,6]), wild_group = phenotypes[,4])
+
+pca3_plantout2 <- pca3[pca3$plantout==2,]
+
+loadings <- pca[["rotation"]]
+
+write.csv(loadings[,1:4], "wild_PCA_loadings.csv")
+
+percentVar <- summary(pca)$importance[2,]
+
+ggplot(pca3, aes(x = PC1, y = PC2, color= plantout, shape=wild)) + 
+  geom_point(size = 3) + 
+  xlab(paste0("PC1: ", round(percentVar[1]*100), "% variance")) + 
+  ylab(paste0("PC2: ", round(percentVar[2]*100), "% variance")) + 
+  ggtitle("Expression Variation between Wild and Cultivars of B. oleracea") +
+  coord_fixed()
+```
 
 ## 16. WGCNA [https://horvath.genetics.ucla.edu/html/CoexpressionNetwork/Rpackages/WGCNA/Tutorials/]
+```r
+install.packages("BiocManager")
+BiocManager::install("WGCNA")
+
+# If necessary, change the path below to the directory where the data files are stored.
+workingDir = "/Users/mem2c2/OneDrive - University of Missouri/Computer/Projects/BoleraceaPopGen/WGCNA/"
+setwd(workingDir);
+# Load the WGCNA package
+library(WGCNA)
+library(tidyverse)
+# The following setting is important, do not omit.
+options(stringsAsFactors = FALSE);
+#Read in data
+wild1000 <- read.csv("top1000_wild_domest copy.csv", header = TRUE, row.names = 1)
+
+wild1000 <- wild1000 %>% rename (
+  X100_sabauda=X1,
+  X101_sabauda=X2,
+  X102_sabauda=X3,
+  X103_ramosa=X4,
+  X104_ramosa=X5,
+  X105_ramosa=X6,
+  X106_ramosa=X7,
+  X107_ramosa=X8,
+  X108_ramosa=X9,
+  X109_ramosa=X10,
+  X010_gemmifera=X11,
+  X110_ramosa=X12,
+  X111_ramosa=X13,
+  X112_ramosa=X14,
+  X113_ramosa=X15,
+  X114_ramosa=X16,
+  X115_ramosa=X17,
+  X116_ramosa=X18,
+  X117_botrytis=X19,
+  X118_botrytis=X20,
+  X119_botrytis=X21,
+  X011_gemmifera=X22,
+  X120_botrytis=X23,
+  X121_botrytis=X24,
+  X122_botrytis=X25,
+  X123_botrytis=X26,
+  X124_botrytis=X27,
+  X125_botrytis=X28,
+  X126_botrytis=X29,
+  X127_botrytis=X30,
+  X128_botrytis=X31,
+  X129_alboglabra=X32,
+  X012_gemmifera=X33,
+  X130_alboglabra=X34,
+  X131_alboglabra=X35,
+  X132_alboglabra=X36,
+  X133_alboglabra=X37,
+  X134_alboglabra=X38,
+  X135_alboglabra=X39,
+  X136_alboglabra=X40,
+  X137_alboglabra=X41,
+  X138_alboglabra=X42,
+  X139_alboglabra=X43,
+  X013_gemmifera=X44,
+  X140_alboglabra=X45,
+  X141_alboglabra=X46,
+  X142_alboglabra=X47,
+  X143_alboglabra=X48,
+  X144_capitata=X49,
+  X145_alboglabra=X50,
+  X146_alboglabra=X51,
+  X147_alboglabra=X52,
+  X148_alboglabra=X53,
+  X149_alboglabra=X54,
+  X014_gemmifera=X55,
+  X150_alboglabra=X56,
+  X151_alboglabra=X57,
+  X152_botrytis=X58,
+  X153_botrytis=X59,
+  X154_botrytis=X60,
+  X155_botrytis=X61,
+  X156_botrytis=X62,
+  X157_botrytis=X63,
+  X159_capitata=X64,
+  X015_gemmifera=X65,
+  X160_capitata=X66,
+  X161_capitata=X67,
+  X162_capitata=X68,
+  X163_capitata=X69,
+  X164_capitata=X70,
+  X165_costata=X71,
+  X167_botrytis=X72,
+  X168_italica=X73,
+  X169_italica=X74,
+  X016_gemmifera=X75,
+  X170_italica=X76,
+  X171_costata=X77,
+  X172_longata=X78,
+  X173_longata=X79,
+  X174_palmifolia=X80,
+  X175_oleracea=X81,
+  X176_oleracea=X82,
+  X177_oleracea=X83,
+  X178_viridis=X84,
+  X179_viridis=X85,
+  X017_gemmifera=X86,
+  X180_viridis=X87,
+  X181_viridis=X88,
+  X182_viridis=X89,
+  X183_viridis=X90,
+  X184_viridis=X91,
+  X185_viridis=X92,
+  X186_viridis=X93,
+  X187_viridis=X94,
+  X189_viridis=X95,
+  X018_gemmifera=X96,
+  X190_viridis=X97,
+  X191_viridis=X98,
+  X192_viridis=X99,
+  X193_viridis=X100,
+  X194_viridis=X101,
+  X195_cretica=X102,
+  X196_gongylodes=X103,
+  X198_cretica=X104,
+  X199_cretica=X105,
+  X019_gemmifera=X106,
+  X001_palmifolia=X107,
+  X203_hilarionis=X108,
+  X204_incana=X109,
+  X205_incana=X110,
+  X207_incana=X111,
+  X208_incana=X112,
+  X209_incana=X113,
+  X020_gemmifera=X114,
+  X212_insularis=X115,
+  X213_insularis=X116,
+  X214_insularis=X117,
+  X215_insularis=X118,
+  X216_insularis=X119,
+  X218_macrocarpa=X120,
+  X219_macrocarpa=X121,
+  X021_gemmifera=X122,
+  X220_macrocarpa=X123,
+  X221_macrocarpa=X124,
+  X222_montana=X125,
+  X224_montana=X126,
+  X226_rupestris=X127,
+  X227_rupestris=X128,
+  X228_rupestris=X129,
+  X229_rupestris=X130,
+  X022_gemmifera=X131,
+  X230_rupestris=X132,
+  X231_rupestris=X133,
+  X232_rupestris=X134,
+  X233_villosa=X135,
+  X234_villosa=X136,
+  X236_villosa=X137,
+  X237_villosa=X138,
+  X238_villosa=X139,
+  X023_gemmifera=X140,
+  X024_gemmifera=X141,
+  X025_costata=X142,
+  X026_costata=X143,
+  X027_costata=X144,
+  X028_costata=X145,
+  X029_costata=X146,
+  X002_palmifolia=X147,
+  X030_costata=X148,
+  X031_costata=X149,
+  X032_costata=X150,
+  X033_costata=X151,
+  X034_costata=X152,
+  X035_medullosa=X153,
+  X036_medullosa=X154,
+  X037_medullosa=X155,
+  X038_medullosa=X156,
+  X039_medullosa=X157,
+  X003_palmifolia=X158,
+  X040_medullosa=X159,
+  X041_medullosa=X160,
+  X042_medullosa=X161,
+  X043_medullosa=X162,
+  X044_medullosa=X163,
+  X045_medullosa=X164,
+  X046_medullosa=X165,
+  X047_medullosa=X166,
+  X048_sabellica=X167,
+  X049_sabellica=X168,
+  X004_palmifolia=X169,
+  X050_sabellica=X170,
+  X051_sabellica=X171,
+  X052_sabellica=X172,
+  X053_sabellica=X173,
+  X054_sabellica=X174,
+  X055_sabellica=X175,
+  X056_sabellica=X176,
+  X057_sabellica=X177,
+  X058_sabellica=X178,
+  X059_sabellica=X179,
+  X005_palmifolia=X180,
+  X060_italica=X181,
+  X061_italica=X182,
+  X062_italica=X183,
+  X063_italica=X184,
+  X064_italica=X185,
+  X065_italica=X186,
+  X066_italica=X187,
+  X067_italica=X188,
+  X068_italica=X189,
+  X069_italica=X190,
+  X006_palmifolia=X191,
+  X070_italica=X192,
+  X071_italica=X193,
+  X072_italica=X194,
+  X073_italica=X195,
+  X074_italica=X196,
+  X075_italica=X197,
+  X076_italica=X198,
+  X077_gongylodes=X199,
+  X078_gongylodes=X200,
+  X079_gongylodes=X201,
+  X007_palmifolia=X202,
+  X080_gongylodes=X203,
+  X081_gongylodes=X204,
+  X082_gongylodes=X205,
+  X083_gongylodes=X206,
+  X084_gongylodes=X207,
+  X085_gongylodes=X208,
+  X086_gongylodes=X209,
+  X087_gongylodes=X210,
+  X088_gongylodes=X211,
+  X089_gongylodes=X212,
+  X008_gemmifera=X213,
+  X090_gongylodes=X214,
+  X091_capitata=X215,
+  X092_capitata=X216,
+  X093_capitata=X217,
+  X094_capitata=X218,
+  X095_capitata=X219,
+  X096_capitata=X220,
+  X097_capitata=X221,
+  X098_capitata=X222,
+  X099_sabauda=X223,
+  X009_gemmifera=X224
+)
+# Take a quick look at what is in the data set:
+dim(wild1000)
+names(wild1000)
+
+datExpr0 = as.data.frame(t(wild1000))
+
+sampleTree = hclust(dist(datExpr0), method = "average");
+# Plot the sample tree: Open a graphic output window of size 12 by 9 inches
+# The user should change the dimensions if the window is too large or too small.
+#sizeGrWindow(12,9)
+#pdf(file = "Plots/sampleClustering.pdf", width = 12, height = 9);
+par(cex = 0.6);
+par(mar = c(0,4,2,0))
+plot(sampleTree, main = "Sample clustering to detect outliers", sub="", xlab="", cex.lab = 1.5,
+     cex.axis = 1, cex.main = 1.5)
+
+traitData = read.csv("phenotypes5.csv", sep = ",", header = TRUE)
+traitData = read.csv("phenotypes5Domest.csv", sep = ",", header = TRUE)
+dim(traitData)
+names(traitData)
+
+# Convert traits to a color representation: white means low, red means high, grey means missing entry
+traitColors = labels2colors(traitData)
+
+# Plot the sample dendrogram and the colors underneath.
+plotDendroAndColors(sampleTree, traitColors,
+                    groupLabels = names(traitData),
+                    rowText = traitData,
+                    cex.dendroLabels = 0.6,
+                    cex.rowText = 0.4,
+                    main = "Brassica oleracea dendrogram and trait heatmap")
+
+
+# Choose a set of soft-thresholding powers
+powers = c(c(1:10), seq(from = 10, to=20, by=2))
+# Call the network topology analysis function
+sft = pickSoftThreshold(datExpr0, dataIsExpr = TRUE, powerVector = powers, verbose = 5)
+# Plot the results:
+#sizeGrWindow(9, 5)
+par(mfrow = c(1,2));
+cex1 = 0.9;
+# Scale-free topology fit index as a function of the soft-thresholding powerplot(sft$fitIndices[,1], -sign(sft$fitIndices[,3])*sft$fitIndices[,2], xlab="Soft Threshold (power)",ylab="Scale Free Topology Model Fit,signed R^2",type="n", main = paste("Scale independence"));
+#jpeg("modelfit_scaleIndependent.jpeg", height = 1000, width = 1000, quality = 100, res = 200)
+plot(sft$fitIndices[,1], -sign(sft$fitIndices[,3])*sft$fitIndices[,2], xlab='Soft Threshold (power)', ylab='Scale Free Topology Model Fit,signed R^2',type='n',main = paste('Scale independence'))
+text(sft$fitIndices[,1], -sign(sft$fitIndices[,3])*sft$fitIndices[,2], labels=powers,cex=cex1,col="red");
+# this line corresponds to using an R^2 cut-off of h
+abline(h=0.90,col="red")
+#dev.off()
+
+# Mean connectivity as a function of the soft-thresholding power
+#jpeg("modelfit_MeanConnectivity.jpeg", height = 1000, width = 1000, quality = 100, res = 200)
+plot(sft$fitIndices[,1], sft$fitIndices[,5], xlab="Soft Threshold (power)",ylab="Mean Connectivity", type="n", main = paste("Mean connectivity"))
+text(sft$fitIndices[,1], sft$fitIndices[,5], labels=powers, cex=cex1,col="red")
+#dev.off()
+
+##Using a convenient 1-step network construction and module detection function, suitable for users wishing to arrive at the result with minimum effort;
+net = blockwiseModules(datExpr0, power = 6,
+                       TOMType = "unsigned", minModuleSize = 30, deepSplit = 2,
+                       reassignThreshold = 0, mergeCutHeight = 0.25,
+                       numericLabels = TRUE, pamRespectsDendro = FALSE,
+                       saveTOMs = TRUE,
+                       saveTOMFileBase = "Top1000genes",
+                       verbose = 3)
+table(net$colors)
+
+# open a graphics window
+#sizeGrWindow(12, 9)
+# Convert labels to colors for plotting
+mergedColors = labels2colors(net$colors)
+# Plot the dendrogram and the module colors underneath
+plotDendroAndColors(net$dendrograms[[1]], mergedColors[net$blockGenes[[1]]],
+                    "Module colors",
+                    dendroLabels = FALSE, hang = 0.03,
+                    addGuide = TRUE, guideHang = 0.05)
+
+
+summaryColor <- table(mergedColors)
+write.csv(summaryColor, file='summary_top1000.csv')
+colorMerge <- rbind(colnames(datExpr0),mergedColors)
+write.csv(t(colorMerge), file='color_top1000.csv')
+
+
+jpeg('Heatmap_top1000.jpg', height = 3000, width=3000,quality=100,res=200)
+dissTOM = 1-TOMsimilarityFromExpr(datExpr0, power = 2)
+plotTOM = dissTOM^7
+diag(plotTOM) = NA
+TOMplot(plotTOM, net$dendrograms[[1]], mergedColors[net$blockGenes[[1]]], main = 'Network heatmap plot, top1000')
+dev.off()
+```
+
+## 17. Mapping with GBIF
+```r
+library(devtools)
+
+install_github("azizka/CoordinateCleaner")
+
+#Set up libraries and data
+library(dplyr)
+library(ggplot2)
+library(rgbif)
+library(maps)
+library(sp)
+install.packages("countrycode")
+library(countrycode)
+library(CoordinateCleaner)
+
+#obtain data from GBIF via rgbif
+dat_incana <- occ_search(scientificName = "Brassica incana", limit = 5000, 
+                  return = "data", hasCoordinate = T)
+
+dat_cretica <- occ_search(scientificName = "Brassica cretica", limit = 5000, 
+                          return = "data", hasCoordinate = T)
+
+dat_macrocarpa <- occ_search(scientificName = "Brassica macrocarpa", limit = 5000, 
+                          return = "data", hasCoordinate = T)
+
+dat_insularis <- occ_search(scientificName = "Brassica insularis", limit = 5000, 
+                          return = "data", hasCoordinate = T)
+
+dat_hilarionis <- occ_search(scientificName = "Brassica hilarionis", limit = 5000, 
+                          return = "data", hasCoordinate = T)
+
+dat_montana <- occ_search(scientificName = "Brassica montana", limit = 5000, 
+                          return = "data", hasCoordinate = T)
+
+dat_rupestris <- occ_search(scientificName = "Brassica rupestris", limit = 5000, 
+                          return = "data", hasCoordinate = T)
+
+dat_villosa <- occ_search(scientificName = "Brassica villosa", limit = 5000, 
+                          return = "data", hasCoordinate = T)
+
+dat_oleracea <- occ_search(scientificName = "Brassica oleracea var. oleracea", limit = 5000,
+                           return = "data", hasCoordinate = T)
+# names(dat) #a lot of columns
+
+#select columns of interest
+dat_incana  <- dat_incana  %>%
+  dplyr::select(species, decimalLongitude, decimalLatitude, countryCode, individualCount,
+                gbifID, family, taxonRank, coordinateUncertaintyInMeters, year,
+                basisOfRecord, institutionCode, datasetName) 
+
+dat_cretica  <- dat_cretica  %>%
+  dplyr::select(species, decimalLongitude, decimalLatitude, countryCode, individualCount,
+                gbifID, family, taxonRank, coordinateUncertaintyInMeters, year,
+                basisOfRecord, institutionCode, datasetName) 
+
+dat_macrocarpa  <- dat_macrocarpa  %>%
+  dplyr::select(species, decimalLongitude, decimalLatitude, countryCode,
+                gbifID, family, taxonRank, coordinateUncertaintyInMeters, year,
+                basisOfRecord, institutionCode, datasetName) 
+
+dat_insularis  <- dat_insularis %>%
+  dplyr::select(species, decimalLongitude, decimalLatitude, countryCode, individualCount,
+                gbifID, family, taxonRank, coordinateUncertaintyInMeters, year,
+                basisOfRecord, institutionCode, datasetName) 
+
+dat_hilarionis  <- dat_hilarionis  %>%
+  dplyr::select(species, decimalLongitude, decimalLatitude, countryCode,
+                gbifID, family, taxonRank, coordinateUncertaintyInMeters, year,
+                basisOfRecord, institutionCode, datasetName) 
+
+dat_montana <- dat_montana  %>%
+  dplyr::select(species, decimalLongitude, decimalLatitude, countryCode, individualCount,
+                gbifID, family, taxonRank, coordinateUncertaintyInMeters, year,
+                basisOfRecord, institutionCode, datasetName) 
+
+dat_rupestris  <- dat_rupestris  %>%
+  dplyr::select(species, decimalLongitude, decimalLatitude, countryCode, individualCount,
+                gbifID, family, taxonRank, coordinateUncertaintyInMeters, year,
+                basisOfRecord, institutionCode, datasetName) 
+
+dat_villosa  <- dat_villosa  %>%
+  dplyr::select(species, decimalLongitude, decimalLatitude, countryCode,
+                gbifID, family, taxonRank, coordinateUncertaintyInMeters, year,
+                basisOfRecord, institutionCode, datasetName) 
+
+dat_oleracea <- dat_oleracea  %>%
+  dplyr::select(scientificName, decimalLongitude, decimalLatitude, countryCode,
+                gbifID, family, taxonRank, coordinateUncertaintyInMeters, year,
+                basisOfRecord, institutionCode, datasetName) 
+
+
+# remove records without coordinates
+dat_incana  <- dat_incana %>%
+  filter(!is.na(decimalLongitude))%>%
+  filter(!is.na(decimalLatitude))
+
+dat_cretica  <- dat_cretica %>%
+  filter(!is.na(decimalLongitude))%>%
+  filter(!is.na(decimalLatitude)) %>% 
+  filter(decimalLongitude > 0)
+
+dat_macrocarpa   <- dat_macrocarpa %>%
+  filter(!is.na(decimalLongitude))%>%
+  filter(!is.na(decimalLatitude))
+
+dat_insularis <- dat_insularis  %>%
+  filter(!is.na(decimalLongitude))%>%
+  filter(!is.na(decimalLatitude)) %>% 
+  filter(decimalLatitude > 0.1)
+
+dat_hilarionis  <- dat_hilarionis %>%
+  filter(!is.na(decimalLongitude))%>%
+  filter(!is.na(decimalLatitude))
+
+dat_montana  <- dat_montana %>%
+  filter(!is.na(decimalLongitude))%>%
+  filter(!is.na(decimalLatitude))
+
+dat_rupestris   <- dat_rupestris  %>%
+  filter(!is.na(decimalLongitude))%>%
+  filter(!is.na(decimalLatitude))
+
+dat_villosa  <- dat_villosa %>%
+  filter(!is.na(decimalLongitude))%>%
+  filter(!is.na(decimalLatitude))
+
+dat_oleracea  <- dat_oleracea %>%
+  filter(!is.na(decimalLongitude))%>%
+  filter(!is.na(decimalLatitude))
+
+dat_oleracea <- dat_oleracea[dat_oleracea[,1] == "Brassica oleracea var. oleracea",]
+
+colnames(dat_oleracea) [1] <- "species"
+
+#Visualize the data on a map
+#first merge data
+
+alldat <- bind_rows(dat_cretica, dat_hilarionis, dat_incana, dat_insularis, dat_macrocarpa, dat_montana, dat_rupestris, dat_villosa, dat_oleracea)
+
+alldat$species <- factor(alldat$species, levels = c("Brassica cretica", "Brassica hilarionis", "Brassica incana", "Brassica insularis", "Brassica macrocarpa", "Brassica montana", "Brassica rupestris", "Brassica villosa", "Brassica oleracea var. oleracea"))
+
+Eng_mediterranean <- c("Spain", "portugal", "Gibraltar", "France", "Monaco", "Italy", "Malta", "Slovenia", 
+                   "Croatia", "Bosnia and Herzegovina", "Montenegro", "Albania", "Greece", 
+                   "Tukey", "Syria", "Cyprus", "Lebanon", "Israel", "Palestine", "Egypt", 
+                   "Libya", "Tunisia", "Algeria", "Morocco", "Switzerland", "Austria", "Germany", "Turkey", "Bulgaria", 
+                   "Macedonia", "Kosovo", "Serbia", "Romania", "Czech Republic", "Slovakia", "Hungary", "Poland", 
+                   "Ukraine", "Moldova", "Russia", "Georgia", "Belgium", "Luxembourg", "Netherlands","UK", "Ireland", "Denmark", "Norway", "Sweden", "Finland")
+
+med.maps <- map_data("world", region = Eng_mediterranean)
+
+region.lab.data <- med.maps %>%
+  group_by(region) %>%
+  summarise(long = mean(long), lat = mean(lat))
+
+#plot data to get an overview
+
+#wm <- borders("world", colour="gray50", fill="gray50")
+#ggplot()+ coord_fixed()+ wm +
+#  geom_point(data = alldat , aes(x = decimalLongitude, y = decimalLatitude, color = species), size = 0.5)+
+#  theme_bw()
+  
+
+ggplot(med.maps, aes(x = long, y = lat))+
+  geom_polygon(aes(group = group))+
+  coord_cartesian(xlim=c(-10, 40), ylim = c(30, 60))+
+  geom_text(aes(label = region), data = region.lab.data,  size = 3, hjust = 0.7, color = "grey56")+
+  geom_point(data = alldat , aes(x = decimalLongitude, y = decimalLatitude, color = species), size = 4, alpha = 0.6)+
+  theme_bw()+
+  guides(size = 10)
+
+```
 
 
 
