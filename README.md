@@ -1,5 +1,7 @@
 # Brassica-oleracea-Population-and-Phylogenetics
-Analyses run for Mabry et al. (in prep) The Evolutionary History of Wild and Domesticated Brassica oleracea (Brassicaceae)
+Analyses run for Mabry et al. (2021) The Evolutionary History of Wild, Domesticated, and Feral Brassica oleracea (Brassicaceae). MBE https://doi.org/10.1093/molbev/msab183
+
+#note- scripts below refect intermediate scripts used for the analyses. 
 
 # Table of contents
 - [1. MAPPING TO THE REFERENCE - STAR 2-PASS ALIGNMENT](#1-mapping-to-the-reference---star-2-pass-alignment)
